@@ -10,6 +10,7 @@ using System.Windows.Forms;
 using System.IO.Ports;
 using System.Windows.Forms.DataVisualization.Charting;
 using System.Collections;
+using System.Threading;
 
 namespace GloveGUIVersion2
 {
@@ -19,7 +20,8 @@ namespace GloveGUIVersion2
         public int count;
         public int serialRead;
         public byte[] buffer;
-
+        private delegate void SetTextDeleg(string text);
+        static bool _continue;
         public Form1()
         {
             InitializeComponent();
@@ -58,34 +60,45 @@ namespace GloveGUIVersion2
 
         private void btnConnect_Click(object sender, EventArgs e)
         {
-            if(cbPorts.Text != "" && cbBaudRate.Text != "" && cbPorts.Text != "Ports not scanned")
+            CollectData(true);
+        }
+        private void CollectData(bool HasConnected)
+        {
+            Thread readThread = new Thread(Read);
+            if (HasConnected)
             {
-                serialPort1 = new SerialPort(cbPorts.Text,
-                    Convert.ToInt32(cbBaudRate.Text), 
-                    Parity.None, 
-                    8, 
-                    StopBits.One);
-                serialPort1.Handshake = Handshake.None;
-                serialPort1.DataReceived += new SerialDataReceivedEventHandler(sp_DataReceived);
-            }
-            else
-            {
-                MessageBox.Show("No selection has been made for port or baud rate");
-            }
-
-            if(serialPort1 !=  null)
-            {
-                try {
-                    serialPort1.Open();
-                    serialRead = serialPort1.Read(buffer, offset, count);
+                if (cbPorts.Text != "" && cbBaudRate.Text != "" && cbPorts.Text != "Ports not scanned")
+                {
+                    serialPort1 = new SerialPort(cbPorts.Text,
+                        Convert.ToInt32(cbBaudRate.Text),
+                        Parity.None,
+                        8,
+                        StopBits.One);
+                    serialPort1.Handshake = Handshake.None;
+                    serialPort1.ReadTimeout = 500;
+                    serialPort1.WriteTimeout = 500;
                 }
-                catch (Exception ex) {
+                else
+                {
+                    MessageBox.Show("No selection has been made for port or baud rate");
+                }
+                try
+                {
+                    if (serialPort1.IsOpen == false)
+                    {
+                        serialPort1.Open();
+                    }
+                    _continue = true;
+                    readThread.Start();
+                    serialPort1.Close();
+                }
+                catch (Exception ex)
+                {
                     String message = String.Format("Port {0} failed to open ERROR: {1}", cbPorts.Text, ex);
                     MessageBox.Show(message);
                 }
             }
         }
-
         private void btnScanPort_Click(object sender, EventArgs e)
         {
             cbPorts.Items.Clear();
