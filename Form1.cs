@@ -22,29 +22,43 @@ namespace GloveGUIVersion2
         public byte[] buffer;
         private delegate void SetTextDeleg(string text);
         static bool _continue;
+        private SerialHandler listener;
+        private int tick = 0;
+
+        private string dataBuffer;
+
+
+        private static readonly int MAXIMUM_TICKS = 100;
+
         public Form1()
         {
             InitializeComponent();
 
-            InitCharts(GloveDataChart1);
-            InitCharts(GloveDataChart2);
-            InitCharts(GloveDataChart3);
-            InitCharts(GloveDataChart4);
-            InitCharts(GloveDataChart5);
-            InitCharts(GloveDataChart6);
+            InitAllCharts();
 
             cbPorts.Items.Add("Ports not scanned");
             cbPorts.SelectedIndex = 0;
 
             initBaudRate(cbBaudRate);
+            btnScanPort_Click(null, null);
         }
         private void initBaudRate(ComboBox box)
         {
             box.Items.Clear();
             box.Items.Add("9600");
             box.Items.Add("115200");
-            box.SelectedIndex = 0;
+            box.SelectedIndex = 1;
             return;
+        }
+
+        private void InitAllCharts()
+        {
+            InitCharts(GloveDataChart1);
+            InitCharts(GloveDataChart2);
+            InitCharts(GloveDataChart3);
+            InitCharts(GloveDataChart4);
+            InitCharts(GloveDataChart5);
+            InitCharts(GloveDataChart6);
         }
         private void InitCharts(Chart chart)
         {
@@ -64,41 +78,62 @@ namespace GloveGUIVersion2
         }
         private void CollectData(bool HasConnected)
         {
-            Thread readThread = new Thread(Read);
-            if (HasConnected)
+            string portName = cbPorts.Text;
+            int baudRate = int.Parse(cbBaudRate.Text);
+            listener = new SerialHandler(portName, baudRate);
+            listener.DataRecieved += onSerialDataGet;
+            listener.Listen();
+        }
+
+        private void onSerialDataGet(object sender, string data)
+        {
+            dataBuffer += data;
+            string[] lines = dataBuffer.Split('\n');
+
+            if (lines.Length < 3)
             {
-                if (cbPorts.Text != "" && cbBaudRate.Text != "" && cbPorts.Text != "Ports not scanned")
+                return;
+            }
+            string[] points = lines[1].Split(',');
+
+            this.BeginInvoke(new InvokeDelegate(() =>
+            {
+
+                if (tick % 2 == 0)
                 {
-                    serialPort1 = new SerialPort(cbPorts.Text,
-                        Convert.ToInt32(cbBaudRate.Text),
-                        Parity.None,
-                        8,
-                        StopBits.One);
-                    serialPort1.Handshake = Handshake.None;
-                    serialPort1.ReadTimeout = 500;
-                    serialPort1.WriteTimeout = 500;
+                    setChartData(GloveDataChart1, float.Parse(points[0]), float.Parse(points[1]), float.Parse(points[2]));
+                    setChartData(GloveDataChart2, float.Parse(points[4]), float.Parse(points[5]), float.Parse(points[6]));
+                    setChartData(GloveDataChart3, float.Parse(points[8]), float.Parse(points[9]), float.Parse(points[10]));
                 }
                 else
                 {
-                    MessageBox.Show("No selection has been made for port or baud rate");
+                    setChartData(GloveDataChart4, float.Parse(points[12]), float.Parse(points[13]), float.Parse(points[14]));
+                    setChartData(GloveDataChart5, float.Parse(points[16]), float.Parse(points[17]), float.Parse(points[18]));
+                    setChartData(GloveDataChart6, float.Parse(points[20]), float.Parse(points[21]), float.Parse(points[22]));
                 }
-                try
-                {
-                    if (serialPort1.IsOpen == false)
-                    {
-                        serialPort1.Open();
-                    }
-                    _continue = true;
-                    readThread.Start();
-                    serialPort1.Close();
-                }
-                catch (Exception ex)
-                {
-                    String message = String.Format("Port {0} failed to open ERROR: {1}", cbPorts.Text, ex);
-                    MessageBox.Show(message);
-                }
-            }
+
+            }));
+            tick++;
+            dataBuffer = "";
+
         }
+
+        private delegate void InvokeDelegate();
+        private void setChartData(Chart chart, float x, float y, float z)
+        {
+            chart.Series["X axis"].Points.AddXY(tick, x);
+            chart.Series["Y axis"].Points.AddXY(tick, y);
+            chart.Series["Z axis"].Points.AddXY(tick, z);
+            if (tick > MAXIMUM_TICKS) {
+                chart.Series["X axis"].Points.RemoveAt(0);
+                chart.Series["Y axis"].Points.RemoveAt(0);
+                chart.Series["Z axis"].Points.RemoveAt(0);
+                chart.ChartAreas[0].RecalculateAxesScale();
+
+            }
+ 
+        }
+
         private void btnScanPort_Click(object sender, EventArgs e)
         {
             cbPorts.Items.Clear();
@@ -110,7 +145,17 @@ namespace GloveGUIVersion2
             portList.Sort();
             cbPorts.Items.Add("Select COM port...");
             cbPorts.Items.AddRange(portList.ToArray());
-            cbPorts.SelectedIndex = 0;
+            cbPorts.SelectedIndex = portList.Count;
+        }
+
+        private void Form1_FormClosed(object sender, FormClosedEventArgs e)
+        {
+        }
+
+        private void Form1_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            listener.Close();
+            listener.DataRecieved -= onSerialDataGet;
         }
     }
 }
